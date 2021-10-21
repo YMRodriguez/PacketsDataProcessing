@@ -79,15 +79,18 @@ products = getProductsFromSubsection(subsectionsLinks[0])
 
 
 def productToPackets(productName, packetData, subgroupId):
+    print("a")
+    print(packetData.get_attribute('innerHTML'))
+    print("b")
     packets = []
     dimensionSpans = list(map(lambda x: x.text, packetData.find_elements(
-        By.CLASS_NAME, "range-revamp-product-details__label--bold")))
+        By.XPATH, ".//*[@class='range-revamp-product-details__label--bold']")))
     for i in range(int(dimensionSpans[4])):
         product = {}
         product["id"] = ""
         product["name"] = productName
         product["productId"] = packetData.find_element(
-            By.CLASS_NAME, "range-revamp-product-identifier__value").text
+            By.XPATH, ".//*[@class='range-revamp-product-identifier__value']").text
         product["subgroupId"] = subgroupId
         # Dimension measures in centimetres and weight in kilograms.
         product["width"] = dimensionSpans[0].split(" ")[0]
@@ -110,21 +113,22 @@ def productBuilder(link, subgroupId):
     packagingButton = list(filter(lambda x: x.text == "Embalaje", driver.find_elements(By.CLASS_NAME,
                                                                                        "range-revamp-accordion-item-header__title")))[0].find_element(By.XPATH, "../..")
     driver.execute_script("arguments[0].click();", packagingButton)
-    packagingDiv = driver.find_element(By.ID, "SEC_product-details-packaging")
-    subproductsNamesDivs = packagingDiv.find_elements(
-        By.CLASS_NAME, "range-revamp-product-details__header notranslate")
-    # Get the names of the subproducts.
-    subproductNames = list(map(lambda x: x.text, subproductsNamesDivs))
-    packets = []
-    for i in list(map(lambda x: x.find_element(By.XPATH, ".."), subproductsNamesDivs)):
-        productName = i.find_element(
-            By.CLASS_NAME, "range-revamp-product-details__header notranslate").text
-        packets.extend(list(map(lambda x: productToPackets(productName, x, subgroupId), i.find_elements(
-            By.CLASS_NAME, "range-revamp-product-details__container"))))
-
+    time.sleep(3)
+    packagingDiv = driver.find_element(
+        By.ID, "SEC_product-details-packaging")
     print(packagingDiv.get_attribute('innerHTML'))
-
-    return
+    subproductsNamesDivs = packagingDiv.find_elements(
+        By.XPATH, ".//*[@class='range-revamp-product-details__header notranslate']")
+    # Get the names of the subproducts.
+    packets = []
+    mainProductDivs = list(
+        map(lambda x: x.find_element(By.XPATH, ".."), subproductsNamesDivs))
+    for i in mainProductDivs:
+        productName = i.find_element(
+            By.XPATH, ".//*[@class='range-revamp-product-details__header notranslate']").get_attribute('innerHTML')
+        packets.extend(list(map(lambda x: productToPackets(productName, x, subgroupId), i.find_elements(
+            By.XPATH, ".//*[@class='range-revamp-product-details__container']"))))
+    return packets
 
 
 for p in products[:1]:
