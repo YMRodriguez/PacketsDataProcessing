@@ -78,29 +78,52 @@ def getProductsFromSubsection(subsectionLinks):
 products = getProductsFromSubsection(subsectionsLinks[0])
 
 
+def productToPackets(productName, packetData, subgroupId):
+    packets = []
+    dimensionSpans = list(map(lambda x: x.text, packetData.find_elements(
+        By.CLASS_NAME, "range-revamp-product-details__label--bold")))
+    for i in range(int(dimensionSpans[4])):
+        product = {}
+        product["id"] = ""
+        product["name"] = productName
+        product["productId"] = packetData.find_element(
+            By.CLASS_NAME, "range-revamp-product-identifier__value").text
+        product["subgroupId"] = subgroupId
+        # Dimension measures in centimetres and weight in kilograms.
+        product["width"] = dimensionSpans[0].split(" ")[0]
+        product["height"] = dimensionSpans[1].split(" ")[0]
+        product["length"] = dimensionSpans[2].split(" ")[0]
+        product["weight"] = dimensionSpans[3].split(" ")[0]
+        packets.append(product)
+    return packets
+
+
 def productBuilder(link, subgroupId):
-    product = []
-    # ProductId - Identical for all the boxes that are the same box.
-    # Gets the containers of containers in html
     driver.get(link)
     time.sleep(1)
     # Click on 'Product details'/'Detalles del producto" button.
     detailsButton = list(filter(lambda x: x.text == "Detalles del producto",
                                 driver.find_elements(By.CLASS_NAME, "range-revamp-chunky-header__title")))[0].find_element(By.XPATH, "../..")
-    detailsButton.click()
+    driver.execute_script("arguments[0].click();", detailsButton)
+    time.sleep(1)
     # Click on 'Packaging'/'Embalaje' button.
     packagingButton = list(filter(lambda x: x.text == "Embalaje", driver.find_elements(By.CLASS_NAME,
                                                                                        "range-revamp-accordion-item-header__title")))[0].find_element(By.XPATH, "../..")
-    packagingButton.click()
-
+    driver.execute_script("arguments[0].click();", packagingButton)
     packagingDiv = driver.find_element(By.ID, "SEC_product-details-packaging")
+    subproductsNamesDivs = packagingDiv.find_elements(
+        By.CLASS_NAME, "range-revamp-product-details__header notranslate")
+    # Get the names of the subproducts.
+    subproductNames = list(map(lambda x: x.text, subproductsNamesDivs))
+    packets = []
+    for i in list(map(lambda x: x.find_element(By.XPATH, ".."), subproductsNamesDivs)):
+        productName = i.find_element(
+            By.CLASS_NAME, "range-revamp-product-details__header notranslate").text
+        packets.extend(list(map(lambda x: productToPackets(productName, x, subgroupId), i.find_elements(
+            By.CLASS_NAME, "range-revamp-product-details__container"))))
+
     print(packagingDiv.get_attribute('innerHTML'))
 
-    # SubgroupId - Identifies the boxes that form a package.
-    subgroupId = subgroupId
-    # subgroupIn - It says if the item if in a subgroup, true if the productId not equal to the subgroupId
-    # and subgroupId with more than one object.
-    # Unique id - Unique for each box, at least in a container.
     return
 
 
