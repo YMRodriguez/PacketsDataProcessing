@@ -78,25 +78,21 @@ def getProductsFromSubsection(subsectionLinks):
 products = getProductsFromSubsection(subsectionsLinks[0])
 
 
-def productToPackets(productName, packetData, subgroupId):
-    print("a")
-    print(packetData.get_attribute('innerHTML'))
-    print("b")
+def productToPackets(productName, productId, packetData, subgroupId):
     packets = []
     dimensionSpans = list(map(lambda x: x.text, packetData.find_elements(
-        By.XPATH, ".//*[@class='range-revamp-product-details__label--bold']")))
-    for i in range(int(dimensionSpans[4])):
+        By.XPATH, ".//*[@class='range-revamp-product-details__label']")))
+    dimensionSpansParsed = list(
+        map(lambda x: float(x.split(" ")[1]), dimensionSpans))
+    for i in range(int(dimensionSpansParsed[4])):
         product = {}
         product["id"] = ""
         product["name"] = productName
-        product["productId"] = packetData.find_element(
-            By.XPATH, ".//*[@class='range-revamp-product-identifier__value']").text
+        product["productId"] = productId
         product["subgroupId"] = subgroupId
         # Dimension measures in centimetres and weight in kilograms.
-        product["width"] = dimensionSpans[0].split(" ")[0]
-        product["height"] = dimensionSpans[1].split(" ")[0]
-        product["length"] = dimensionSpans[2].split(" ")[0]
-        product["weight"] = dimensionSpans[3].split(" ")[0]
+        product["width"], product["height"], product["length"], product["weight"] = dimensionSpansParsed[:-1]
+        print(product)
         packets.append(product)
     return packets
 
@@ -126,7 +122,9 @@ def productBuilder(link, subgroupId):
     for i in mainProductDivs:
         productName = i.find_element(
             By.XPATH, ".//*[@class='range-revamp-product-details__header notranslate']").get_attribute('innerHTML')
-        packets.extend(list(map(lambda x: productToPackets(productName, x, subgroupId), i.find_elements(
+        productId = i.find_element(
+            By.XPATH, ".//*[@class='range-revamp-product-identifier__value']").get_attribute('innerHTML')
+        packets.extend(list(map(lambda x: productToPackets(productName, productId, x, subgroupId), i.find_elements(
             By.XPATH, ".//*[@class='range-revamp-product-details__container']"))))
     return packets
 
@@ -136,5 +134,5 @@ for p in products[:1]:
     pSoup = bsp(pResponse.content, 'html.parser')
     # Gets the first identifier that corresponds to the productId if there is an only item object.
     subgroupId = pSoup.find(
-        "span", class_="range-revamp-product-identifier__value")
+        "span", class_="range-revamp-product-identifier__value").text
     pList = productBuilder(p, subgroupId)
