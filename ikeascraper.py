@@ -141,7 +141,7 @@ def grouper(iterable, n, fillvalue=None):
 # apikeyChangerPivot = (maxApiRequestsAvailable - maxApiConcurrentCalls)/maxApiConcurrentCalls
 
 
-maxApiConcurrentCalls = 10
+maxApiConcurrentCalls = 50
 
 
 def chargeCurrentMaxLinkIndex():
@@ -163,7 +163,7 @@ for linksSlice in grouper(productsLinks[currentStartingLinkIndex:], maxApiConcur
     # ---------- Scraper API alternative, slow unfortunatelly --------------------
     # Configure ScrapperAPI
     # Create an account in ScrapperAPI and get the API key. It is valid for 5k requests.
-    #apiKey = '727882ac54ce5688ae3b57d8ee11896e' if count < apikeyChangerPivot else '95336fb319296c1c9fb116ffafb909fc'
+    #apiKey = '<value>' if count < apikeyChangerPivot else '<value>'
     #payloads = list(map(lambda x: {'api_key': apiKey, 'url': x}, linksSlice))
     linksSlice = list(filter(lambda x: x is not None, linksSlice))
     responses = []
