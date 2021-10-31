@@ -1,138 +1,198 @@
 import requests
-import re
-import math
-import time
+import json
 from bs4 import BeautifulSoup as bsp
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.relative_locator import locate_with
+from requests.exceptions import HTTPError
+import os
+import pathlib
+from concurrent.futures import ThreadPoolExecutor
+from itertools import zip_longest
+
+# ---------------------- Links related functions --------------------------------------------
 
 
-# Configuring selenium
-options = webdriver.ChromeOptions()
-options.add_argument('--ignore-certificate-errors')
-options.add_argument('--incognito')
-options.add_argument('--headless')
-driver = webdriver.Chrome(
-    "./chromedriver", options=options)
-
-# Scraping ikea means going by Section (Muebles) -> Subsection (Camas) -> Subsubsection (Camas tapizadas) -> Products (TUFJORD)
-# Fetch the whole products list.
-mainPage = requests.get(
-    'https://www.ikea.com/es/es/cat/productos-products/')
-catalogSections = bsp(mainPage.content, 'html.parser').find_all(
-    'a', class_="vn-link vn-nav__link vn-accordion__image")
-
-# Link for each of the main sections.
-linksMainSections = list(map(lambda x: x.get('href'), catalogSections))
-
-
-def getChildrenLinks(parentsLinks, reg):
-    childrenLinks = []
-    for l in parentsLinks:
-        sectionPage = requests.get(l)
-        # Makes a soup that contains the objects targeted by the reg expression.
-        desiredRegObjects = bsp(sectionPage.content, 'html.parser').find_all(
-            'a', class_=re.compile(reg))
-        # Gets links under the specified class.
-        childrenLinks += list(map(lambda x: x.get('href'), desiredRegObjects))
-    return childrenLinks
-
-
-# This will represent a unique list of subsection links
-subsectionsLinks = list(dict.fromkeys(getChildrenLinks(
-    linksMainSections, "vn-link vn__nav__link vn-")))
-
-
-def getProductsFromSubsection(subsectionLinks):
-    """
-        This function gets all the links of the products in a subsection.
-
-        :param: link of the subsection.
-        :return: list of product links.
-    """
-    subsectionBasePage = requests.get(subsectionLinks)
-    catalogBase = bsp(subsectionBasePage.content, 'html.parser')
-    # Get all the expanded catalog if possible.
+def getFullListOfProducts():
+    # Scraping ikea means going by Section (Muebles) -> Subsection (Camas) -> Subsubsection (Camas tapizadas) -> Products (TUFJORD)
+    # Fetch the whole products list.
     try:
-        count = str.strip(catalogBase.find(
-            'div', class_="catalog-product-list__total-count").string).split(" ")
-        maxProducts = int(count[-1])
-        currentProducts = int(count[1])
-        pages = math.floor(maxProducts/currentProducts)
-        # Fetch the subsection page.
-        driver.get(subsectionLinks + "?page=" + str(pages))
-        time.sleep(3)
-        page_source = driver.page_source
-        catalogExpanded = bsp(page_source, 'html.parser')
-    except:
-        catalogExpanded = catalogBase
-    productDivs = catalogExpanded.find_all(
-        'div', class_="plp-fragment-wrapper")
-    # Get the links and remove duplicates.
-    productLinks = list(map(lambda x: x.find(
-        'a', class_="range-revamp-product-compact__wrapper-link").get('href'), list(set(productDivs))))
-    return productLinks
+        mainPage = requests.get(
+            'https://www.ikea.com/es/es/cat/productos-products/')
+        mainPage.raise_for_status()
+    except HTTPError as http_err:
+        print(f'HTTP error occurred: {http_err}')
+    except Exception as err:
+        print(f'Other error occurred: {err}')
+
+    catalogSections = bsp(mainPage.content, 'html.parser').find_all(
+        'a', class_="vn-link vn-nav__link vn-accordion__image")
+
+    # Link for each of the main sections.
+    linksMainSections = list(map(lambda x: x.get('href'), catalogSections))
+    # Obtain the category id for every main section (furniture, kitchen&appliances...)
+    mainSectionsIds = list(
+        map(lambda x: x.split("-")[-1][:-1], linksMainSections))
+
+    def getProductsFromMainSection(sectionId):
+        maxProducts = 50000
+        try:
+            sectionProducts = requests.get(
+                "https://sik.search.blue.cdtapps.com/es/en/product-list-page/more-products?category=" + sectionId + "&start=0&end=" + str(maxProducts))
+        except HTTPError as http_err:
+            print(f'HTTP error occurred: {http_err}')
+        except Exception as err:
+            print(f'Other error occurred: {err}')
+        return list(map(lambda x: x["pipUrl"], sectionProducts.json()["moreProducts"]["productWindow"]))
+    # Gathering of all the unique products in the web.
+    uniqueProductsLinks = set()
+    for i in mainSectionsIds:
+        uniqueProductsLinks.update(getProductsFromMainSection(i))
+
+    pathlib.Path(os.path.dirname(__file__) + os.path.sep +
+                 'ikeaData').mkdir(parents=True, exist_ok=True)
+    updateLinks(uniqueProductsLinks)
 
 
-products = getProductsFromSubsection(subsectionsLinks[0])
+def chargeLinks():
+    with open(os.path.dirname(__file__) + os.path.sep + 'ikeaData' + os.path.sep + 'links.txt', 'r') as f:
+        productsLinks = [line.rstrip('\n') for line in f]
+    return productsLinks
 
 
-def productToPackets(productName, productId, packetData, subgroupId):
+def updateLinks(links):
+    fullCatalogLinks = os.path.dirname(
+        __file__) + os.path.sep + 'ikeaData' + os.path.sep + 'links.txt'
+    with open(fullCatalogLinks, 'w') as file:
+        for s in links:
+            file.write(s + '\n')
+
+
+try:
+    productsLinks = chargeLinks()
+except:
+    print("Creating a new list of all the links in the ikea page.")
+    getFullListOfProducts()
+    productsLinks = chargeLinks()
+    print("Fetched all links.")
+
+# --------------------- Mappping functions ---------------------------------
+
+
+def productToPackets(packageData, subgroupId):
     packets = []
-    dimensionSpans = list(map(lambda x: x.text, packetData.find_elements(
-        By.XPATH, ".//*[@class='range-revamp-product-details__label']")))
-    dimensionSpansParsed = list(
-        map(lambda x: float(x.split(" ")[1]), dimensionSpans))
-    for i in range(int(dimensionSpansParsed[4])):
-        product = {}
-        product["id"] = ""
-        product["name"] = productName
-        product["productId"] = productId
-        product["subgroupId"] = subgroupId
-        # Dimension measures in centimetres and weight in kilograms.
-        product["width"], product["height"], product["length"], product["weight"] = dimensionSpansParsed[:-1]
-        print(product)
-        packets.append(product)
+    for i in range(packageData['quantity']['value']):
+        packet = {}
+        packet["id"] = ""
+        packet["name"] = packageData["name"]
+        packet["description"] = packageData["typeName"]
+        packet["productId"] = int(
+            packageData["articleNumber"]["value"].translate({ord("."): None}))
+        packet["subgroupId"] = subgroupId
+        if "Diameter" in list(map(lambda x: x["label"], packageData['measurements'][0])):
+            packet["rounded"] = 1
+            packet["length"], packet["weight"], packet["diameter"] = list(
+                map(lambda x: x["value"].split(" ")[0], packageData["measurements"][0]))
+        else:
+            packet["rounded"] = 0
+            packet["width"], packet["height"], packet["length"], packet["weight"] = list(
+                map(lambda x: x["value"].split(" ")[0], packageData["measurements"][0]))
+        packets.append(packet)
     return packets
 
 
-def productBuilder(link, subgroupId):
-    driver.get(link)
-    time.sleep(1)
-    # Click on 'Product details'/'Detalles del producto" button.
-    detailsButton = list(filter(lambda x: x.text == "Detalles del producto",
-                                driver.find_elements(By.CLASS_NAME, "range-revamp-chunky-header__title")))[0].find_element(By.XPATH, "../..")
-    driver.execute_script("arguments[0].click();", detailsButton)
-    time.sleep(1)
-    # Click on 'Packaging'/'Embalaje' button.
-    packagingButton = list(filter(lambda x: x.text == "Embalaje", driver.find_elements(By.CLASS_NAME,
-                                                                                       "range-revamp-accordion-item-header__title")))[0].find_element(By.XPATH, "../..")
-    driver.execute_script("arguments[0].click();", packagingButton)
-    time.sleep(3)
-    packagingDiv = driver.find_element(
-        By.ID, "SEC_product-details-packaging")
-    print(packagingDiv.get_attribute('innerHTML'))
-    subproductsNamesDivs = packagingDiv.find_elements(
-        By.XPATH, ".//*[@class='range-revamp-product-details__header notranslate']")
+def productBuilder(linkResponse):
+    soup = bsp(linkResponse.content, 'html.parser')
+    packagingDataSource = json.loads(soup.find(
+        'div', class_="js-product-information-section range-revamp-product-information-section").get('data-initial-props'))
+    packagingData = packagingDataSource['productDetailsProps'][
+        'accordionObject']['packaging']['contentProps']['packages']
     # Get the names of the subproducts.
     packets = []
-    mainProductDivs = list(
-        map(lambda x: x.find_element(By.XPATH, ".."), subproductsNamesDivs))
-    for i in mainProductDivs:
-        productName = i.find_element(
-            By.XPATH, ".//*[@class='range-revamp-product-details__header notranslate']").get_attribute('innerHTML')
-        productId = i.find_element(
-            By.XPATH, ".//*[@class='range-revamp-product-identifier__value']").get_attribute('innerHTML')
-        packets.extend(list(map(lambda x: productToPackets(productName, productId, x, subgroupId), i.find_elements(
-            By.XPATH, ".//*[@class='range-revamp-product-details__container']"))))
+    subgroupId = int(packagingData[0]['articleNumber']
+                     ['value'].translate({ord("."): None}))
+    # Case where there are several product forming a product itself.
+    if len(packagingData) > 1:
+        # Got to do this distiction because first measurements is empty in a combined product.
+        for i in packagingData[1:]:
+            packets.extend(productToPackets(i, subgroupId))
+    else:
+        packets.extend(productToPackets(packagingData[0], subgroupId))
     return packets
 
 
-for p in products[:1]:
-    pResponse = requests.get(p)
-    pSoup = bsp(pResponse.content, 'html.parser')
-    # Gets the first identifier that corresponds to the productId if there is an only item object.
-    subgroupId = pSoup.find(
-        "span", class_="range-revamp-product-identifier__value").text
-    pList = productBuilder(p, subgroupId)
+# -------------- Main --------------------------------------
+mainPacketsList = []
+dataFilename = os.path.dirname(
+    __file__) + os.path.sep + 'ikeaData' + os.path.sep + 'data.json'
+backupFilename = os.path.dirname(
+    __file__) + os.path.sep + 'ikeaData' + os.path.sep + 'from.json'
+
+
+def get_url(url):
+    return requests.get(url)
+
+
+def grouper(iterable, n, fillvalue=None):
+    args = [iter(iterable)] * n
+    return zip_longest(*args, fillvalue=fillvalue)
+
+# ----- Scrapper API altenative ---------------
+# def get_url_ScrapperAPI(payload):
+#    return requests.get('http://api.scraperapi.com', params=payload)
+# maxApiRequestsAvailable = 4900
+# apikeyChangerPivot = (maxApiRequestsAvailable - maxApiConcurrentCalls)/maxApiConcurrentCalls
+
+
+maxApiConcurrentCalls = 10
+
+
+def chargeCurrentMaxLinkIndex():
+    try:
+        with open(os.path.dirname(__file__) + os.path.sep + 'ikeaData' + os.path.sep + 'from.json', 'r') as f:
+            currentMaxLinkIndex = productsLinks.index(
+                json.load(f)[0]["link"]) + 1
+        return currentMaxLinkIndex
+    except:
+        return 0
+
+
+currentStartingLinkIndex = chargeCurrentMaxLinkIndex()
+# Reload current extracted data.
+if currentStartingLinkIndex:
+    with open(os.path.dirname(__file__) + os.path.sep + 'ikeaData' + os.path.sep + 'data.json', 'r') as f:
+        mainPacketList = json.load(f)
+for linksSlice in grouper(productsLinks[currentStartingLinkIndex:], maxApiConcurrentCalls, None):
+    # ---------- Scraper API alternative, slow unfortunatelly --------------------
+    # Configure ScrapperAPI
+    # Create an account in ScrapperAPI and get the API key. It is valid for 5k requests.
+    #apiKey = '727882ac54ce5688ae3b57d8ee11896e' if count < apikeyChangerPivot else '95336fb319296c1c9fb116ffafb909fc'
+    #payloads = list(map(lambda x: {'api_key': apiKey, 'url': x}, linksSlice))
+    linksSlice = list(filter(lambda x: x is not None, linksSlice))
+    responses = []
+    try:
+        with ThreadPoolExecutor(max_workers=maxApiConcurrentCalls) as pool:
+            responses = list(pool.map(get_url, linksSlice))
+    except HTTPError as http_err:
+        print(f'HTTP error occurred: {http_err}')
+    except Exception as err:
+        print(f'Other error occurred: {err}')
+
+    # There is need to verify that the url is currently supported, example of failure (https://www.ikea.com/es/en/p/vattlosa-wall-decoration-home-black-40473610/)
+    wrongResponseLinks = list(
+        filter(lambda x: x not in linksSlice, list(map(lambda y: y.url, responses))))
+    actualProductLinks = productsLinks
+    if len(wrongResponseLinks):
+        print("There has been an error with an outdated link.")
+        responses = list(
+            filter(lambda x: x.url not in wrongResponseLinks, responses))
+        actualProductLinks = list(
+            filter(lambda x: x not in wrongResponseLinks, productsLinks))
+        updateLinks(productsLinks)
+        print("Links list updated, remove outdated link.")
+
+    for i in responses:
+        mainPacketsList.extend(productBuilder(i))
+
+    with open(dataFilename, 'w+') as file:
+        json.dump(mainPacketsList, file, indent=2, ensure_ascii=False)
+    with open(backupFilename, 'w+') as file:
+        backup = [{"link": linksSlice[-1]}]
+        json.dump(backup, file, indent=2, ensure_ascii=False)
