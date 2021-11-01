@@ -15,7 +15,7 @@ def getFullListOfProducts():
     # Fetch the whole products list.
     try:
         mainPage = requests.get(
-            'https://www.ikea.com/es/es/cat/productos-products/')
+            'https://www.ikea.com/es/en/cat/productos-products/')
         mainPage.raise_for_status()
     except HTTPError as http_err:
         print(f'HTTP error occurred: {http_err}')
@@ -51,7 +51,7 @@ def getFullListOfProducts():
     updateLinks(uniqueProductsLinks)
 
 
-def chargeLinks():
+def fetchLinks():
     with open(os.path.dirname(__file__) + os.path.sep + 'ikeaData' + os.path.sep + 'links.txt', 'r') as f:
         productsLinks = [line.rstrip('\n') for line in f]
     return productsLinks
@@ -66,11 +66,11 @@ def updateLinks(links):
 
 
 try:
-    productsLinks = chargeLinks()
+    productsLinks = fetchLinks()
 except:
     print("Creating a new list of all the links in the ikea page.")
     getFullListOfProducts()
-    productsLinks = chargeLinks()
+    productsLinks = fetchLinks()
     print("Fetched all links.")
 
 # --------------------- Mappping functions ---------------------------------
@@ -110,7 +110,7 @@ def productBuilder(linkResponse):
                      ['value'].translate({ord("."): None}))
     # Case where there are several product forming a product itself.
     if len(packagingData) > 1:
-        # Got to do this distiction because first measurements is empty in a combined product.
+        # Got to do this distiction because first 'measurements' key is empty in a combined product.
         for i in packagingData[1:]:
             packets.extend(productToPackets(i, subgroupId))
     else:
@@ -158,7 +158,7 @@ currentStartingLinkIndex = chargeCurrentMaxLinkIndex()
 # Reload current extracted data.
 if currentStartingLinkIndex:
     with open(os.path.dirname(__file__) + os.path.sep + 'ikeaData' + os.path.sep + 'data.json', 'r') as f:
-        mainPacketList = json.load(f)
+        mainPacketsList = json.load(f)
 for linksSlice in grouper(productsLinks[currentStartingLinkIndex:], maxApiConcurrentCalls, None):
     # ---------- Scraper API alternative, slow unfortunatelly --------------------
     # Configure ScrapperAPI
