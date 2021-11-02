@@ -137,7 +137,7 @@ def grouper(iterable, n, fillvalue=None):
     return zip_longest(*args, fillvalue=fillvalue)
 
 
-maxApiConcurrentCalls = 50
+maxApiConcurrentCalls = os.cpu_count()*5
 
 
 def chargeCurrentMaxLinkIndex():
