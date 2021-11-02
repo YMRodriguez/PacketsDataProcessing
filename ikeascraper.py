@@ -141,7 +141,7 @@ def grouper(iterable, n, fillvalue=None):
 # apikeyChangerPivot = (maxApiRequestsAvailable - maxApiConcurrentCalls)/maxApiConcurrentCalls
 
 
-maxApiConcurrentCalls = 50
+maxApiConcurrentCalls = os.cpu_count()*5
 
 
 def chargeCurrentMaxLinkIndex():
