@@ -136,14 +136,14 @@ def mediamarktAdaptation():
         lambda x: determineCurrentOrientation(x), 1)
     mmData.loc[(mmData["description"].str.contains("TV") | mmData["description"].str.contains("Monitores")) & ~(mmData["description"].str.contains(
         "Series") | mmData["description"].str.contains("Antena")) & ((mmData["or"] == 1) | (mmData["or"] == 2)), "or"] = 3
-
+    mmData = mmData[mmData["description"] != "Juguetes sexuales"]
     with open(mmPath + os.path.sep + 'mm-orientationConstraints-noDst.json', 'w+') as f:
-        def checkSpecial(description, pid):
+        def checkSpecial(description):
             special = any(list(map(lambda x: x in description, ["TV", "Monitores"]))) and all(
                 list(map(lambda x: x not in description, ["Antena", "Series"])))
             return special
         mmData["f_or"] = mmData.apply(
-            lambda x: createRandomFeasibleOrientations(x, special=checkSpecial(x["description"], x["productId"])), 1)
+            lambda x: createRandomFeasibleOrientations(x, special=checkSpecial(x["description"])), 1)
         json.dump(mmData.to_dict(orient="records"),
                   f, indent=2, ensure_ascii=False)
     with open(mmPath + os.path.sep + 'mm-noOrientationConstraints-noDst.json', 'w+') as f:
@@ -175,6 +175,8 @@ def mixedDataAdaptation():
 
 # -------------- Scenarios dataset ------------
 
+mediamarktAdaptation()
+mixedDataAdaptation()
 dataPath = mixedPath + 'data-orientationConstraints-noDst.json'
 data = pd.read_json(dataPath)
 getRelevantStats(generator(data, 5))

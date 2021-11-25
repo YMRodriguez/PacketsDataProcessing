@@ -11,7 +11,7 @@ from itertools import zip_longest
 
 # ---------------------- Links related functions --------------------------------------------
 
-maxApiConcurrentCalls = 200
+maxApiConcurrentCalls = 100
 
 
 def getFullListOfProducts():
@@ -42,21 +42,21 @@ def getFullListOfProducts():
             productsLinks = list(
                 map(lambda x: baseUrl + 'products' + os.path.sep + x["link"].split('products' + os.path.sep)[1], i["items"]))
             uniqueProductsLinks.update(productsLinks)
-    pathlib.Path(os.path.dirname(__file__) + os.path.sep +
-                 'mediamarktData').mkdir(parents=True, exist_ok=True)
+    pathlib.Path(os.path.dirname(__file__) + os.path.sep + '..' +
+                 os.path.sep + 'mediamarktData').mkdir(parents=True, exist_ok=True)
     updateLinks(uniqueProductsLinks)
 
 
 def updateLinks(links):
     fullCatalogLinks = os.path.dirname(
-        __file__) + os.path.sep + 'mediamarktData' + os.path.sep + 'links.txt'
+        __file__) + os.path.sep + '..' + os.path.sep + 'mediamarktData' + os.path.sep + 'links.txt'
     with open(fullCatalogLinks, 'w') as file:
         for s in links:
             file.write(s + '\n')
 
 
 def fetchLinks():
-    with open(os.path.dirname(__file__) + os.path.sep + 'mediamarktData' + os.path.sep + 'links.txt', 'r') as f:
+    with open(os.path.dirname(__file__) + os.path.sep + '..' + os.path.sep + 'mediamarktData' + os.path.sep + 'links.txt', 'r') as f:
         productsLinks = [line.rstrip('\n') for line in f]
     return productsLinks
 
@@ -95,14 +95,26 @@ def productToPacket(packageData, characteristics):
     packet["rounded"] = 0
     characteristics = list(map(lambda x: x.find(
         'td', class_='spec-line-value').text, characteristics))
-    packet["width"], packet["height"], packet["length"] = float(characteristics[3].split(
-        ' ')[0]), float(characteristics[2].split(' ')[0]), float(characteristics[1].split(' ')[0])
+    for i, d in zip([3, 2, 1], ["width", "height", "length"]):
+        packet[d] = float(characteristics[i].split(' ')[0]) / \
+            unitNormalizationToCm(characteristics[i].split(' ')[1])
     packet["weight"] = float(characteristics[0].split(' ')[0]) if characteristics[0].split(
         ' ')[1] == 'kg' else float(characteristics[0].split(' ')[0])/1000
-    if packet["width"] or packet["height"] or packet["length"]:
+    if [packet["width"], packet["height"], packet["length"]] == [1, 1, 1]:
+        return None
+    elif packet["width"] and packet["height"] and packet["length"]:
         return packet
     else:
         return None
+
+
+def unitNormalizationToCm(unit):
+    if unit == "cm":
+        return 1
+    if unit == "m":
+        return 0.01
+    if unit == "mm":
+        return 10
 
 
 def productBuilder(linkResponse):
@@ -123,9 +135,9 @@ def productBuilder(linkResponse):
 # -------------- Main --------------------------------------
 mainPacketsList = []
 dataFilename = os.path.dirname(
-    __file__) + os.path.sep + 'mediamarktData' + os.path.sep + 'data.json'
+    __file__) + os.path.sep + '..' + os.path.sep + 'mediamarktData' + os.path.sep + 'data.json'
 backupFilename = os.path.dirname(
-    __file__) + os.path.sep + 'mediamarktData' + os.path.sep + 'from.json'
+    __file__) + os.path.sep + '..' + os.path.sep + 'mediamarktData' + os.path.sep + 'from.json'
 
 
 def get_url(url):
