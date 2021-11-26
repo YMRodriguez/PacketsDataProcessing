@@ -3,19 +3,9 @@ import os
 import pandas as pd
 import random
 import pathlib
-from generator import generator, getRelevantStats
-
+from generator import generator, getRelevantStats, getPartition, assignIDs
+from datetime import datetime
 # -------------- Generic functions --------------------------------
-
-
-def assignIDs(data):
-    """
-    This function's objetive is to normalize the ID for any kind of data that could enter.
-    Args:
-        data ([df]): data to provide a normalized ID.
-    """
-    data["id"] = data.index
-    return data
 
 
 def assignFragility(data, fragileWords, where="description"):
@@ -26,7 +16,7 @@ def assignFragility(data, fragileWords, where="description"):
 
 def volumeProcessor(data):
     data["volume"] = data.apply(
-        lambda x: round((x["length"]*x["width"]*x["height"])/100000, 3), axis=1)
+        lambda x: round((x["length"]*x["width"]*x["height"])/100000, 5), axis=1)
     return data
 
 
@@ -162,21 +152,50 @@ mixedPath = os.path.dirname(__file__) + os.path.sep + \
 
 def mixedDataAdaptation():
     with open(mixedPath + 'data-noOrientationConstraints-noDst.json', 'w+') as f:
-        mixedDataNoOrient = assignIDs(pd.concat([pd.read_json(mmPath + 'mm-noOrientationConstraints-noDst.json').drop(
-            columns=["id"]), pd.read_json(ikeaPath + 'ikea-noOrientationConstraints-noDst.json').drop(columns=["id"])]).reset_index(drop=True))
-        json.dump(mixedDataNoOrient.to_dict(orient="records"),
+        mixedDataNoOrient = pd.concat([pd.read_json(
+            mmPath + 'mm-noOrientationConstraints-noDst.json'), pd.read_json(ikeaPath + 'ikea-noOrientationConstraints-noDst.json')])
+        mixedDataNoOrient["weight"] = mixedDataNoOrient.apply(
+            lambda x: round(x["weight"], 3), 1)
+        # Drop ridiculous dimensions items
+        mixedDataNoOrient = mixedDataNoOrient[(mixedDataNoOrient["length"] >= 1) & (
+            mixedDataNoOrient["width"] >= 1) & (mixedDataNoOrient["height"] >= 1) & (mixedDataNoOrient["volume"] < 15)]
+        json.dump(assignIDs(mixedDataNoOrient.drop(columns=["id"]).reset_index(drop=True)).to_json(orient="records"),
                   f, indent=2, ensure_ascii=False)
     with open(mixedPath + 'data-orientationConstraints-noDst.json', 'w+') as f:
-        mixedDataOrient = assignIDs(pd.concat([pd.read_json(mmPath + 'mm-orientationConstraints-noDst.json').drop(
-            columns=["id"]), pd.read_json(ikeaPath + 'ikea-orientationConstraints-noDst.json').drop(columns=["id"])]).reset_index(drop=True))
-        json.dump(mixedDataOrient.to_dict(orient="records"),
+        mixedDataOrient = pd.concat([pd.read_json(
+            mmPath + 'mm-orientationConstraints-noDst.json'), pd.read_json(ikeaPath + 'ikea-orientationConstraints-noDst.json')])
+        mixedDataOrient["weight"] = mixedDataOrient.apply(
+            lambda x: round(x["weight"], 3), 1)
+        # Drop ridiculous dimensions items
+        mixedDataOrient = mixedDataOrient[(mixedDataOrient["length"] >= 1) & (
+            mixedDataOrient["width"] >= 1) & (mixedDataOrient["height"] >= 1) & (mixedDataOrient["volume"] < 15)]
+        json.dump(assignIDs(mixedDataOrient.drop(columns=["id"]).reset_index(drop=True)).to_json(orient="records"),
                   f, indent=2, ensure_ascii=False)
 
 
 # -------------- Scenarios dataset ------------
-
-mediamarktAdaptation()
-mixedDataAdaptation()
 dataPath = mixedPath + 'data-orientationConstraints-noDst.json'
-data = pd.read_json(dataPath)
-getRelevantStats(generator(data, 5))
+with open(dataPath, 'r') as f:
+    data = json.load(f)
+data = pd.read_json(data)
+
+pathlib.Path(os.path.dirname(__file__) + os.path.sep +
+             'scenarios').mkdir(parents=True, exist_ok=True)
+scenariosPath = os.path.dirname(
+    __file__) + os.path.sep + 'scenarios' + os.path.sep
+
+newData = generator(data, 5, adrDist=[1, 0], priorityDist=[
+                    0.5, 0.5], fragility=True)
+
+# volRatio is specially interesting to know how many packets volume/combinations has the experiment.
+# It is obvious that with a large ratio the algoritm may achieve better results because it allows to have more combinations
+# However, in real examples this may not be true, that's the importance of this parameter.
+partition, volRatio = getPartition(newData, volume=81.6, do=True)
+nPackets, nOrders, destinations, uniqueDim, ADRcount, priorityCount, fragilityCount = getRelevantStats(
+    partition)
+filename = datetime.now().strftime('%d%H%M%S') + '-' + str(nPackets) + '-' + str(nOrders) + '-' + str(uniqueDim) + '-' + str(volRatio) + '-' + str(destinations) + \
+    '-' + str(ADRcount) + '-' + str(priorityCount) + \
+    '-' + str(fragilityCount) + '.json'
+with open(scenariosPath + os.path.sep + filename, 'w+') as f:
+    json.dump(partition.to_json(orient="records"),
+              f, indent=2, ensure_ascii=False)
