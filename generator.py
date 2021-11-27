@@ -48,10 +48,11 @@ def getPartition(data, volume, volumeOffset=1.5, do=True):
             "subgroupId")["volume"].sum().reset_index()
         meanSubgroupsEstimation = round(
             (volume*volumeOffset)/subgroupAndTotalVolumeDf["volume"].mean())
+        # Mind this could be less than 1, we left this case to check if the algorithm would work good in these relaxed scenarios.
         randomSubgroupsIds = subgroupAndTotalVolumeDf["subgroupId"].sample(
             n=meanSubgroupsEstimation)
         partition = data[data["subgroupId"].isin(randomSubgroupsIds)]
-        return assignIDs(partition.drop(columns=["id"]).reset_index()), round(partition["volume"].sum()/(volume*volumeOffset), 1)
+        return assignIDs(partition.drop(columns=["id"]).reset_index(drop=True)), round(partition["volume"].sum()/(volume*volumeOffset), 1)
     else:
         return data, round(data["volume"].sum()/(volume*volumeOffset), 1)
 
@@ -78,4 +79,4 @@ def getRelevantStats(data):
 
 def dataFeasibleOrientationsTupleSerializer(data):
     data["feasibleOr"] = data.apply(lambda x: tuple(x["f_or"]), 1)
-    return data.drop(columns=["f_or"])
+    return data

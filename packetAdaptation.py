@@ -197,5 +197,5 @@ filename = datetime.now().strftime('%d%H%M%S') + '-' + str(nPackets) + '-' + str
     '-' + str(ADRcount) + '-' + str(priorityCount) + \
     '-' + str(fragilityCount) + '.json'
 with open(scenariosPath + os.path.sep + filename, 'w+') as f:
-    json.dump(partition.to_json(orient="records"),
+    json.dump(partition.drop(columns=["f_or", "dimensionUnique"]).to_json(orient="records"),
               f, indent=2, ensure_ascii=False)
