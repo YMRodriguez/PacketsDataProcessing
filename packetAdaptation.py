@@ -151,6 +151,10 @@ mixedPath = os.path.dirname(__file__) + os.path.sep + \
 
 
 def mixedDataAdaptation():
+    def cleanDensityMistakes(data):
+        data["density"] = data["weight"]/data["volume"]
+        data = data[data["density"] < 100].drop(columns=["density"])
+        return data
     with open(mixedPath + 'data-noOrientationConstraints-noDst.json', 'w+') as f:
         mixedDataNoOrient = pd.concat([pd.read_json(
             mmPath + 'mm-noOrientationConstraints-noDst.json'), pd.read_json(ikeaPath + 'ikea-noOrientationConstraints-noDst.json')])
@@ -159,6 +163,7 @@ def mixedDataAdaptation():
         # Drop ridiculous dimensions items
         mixedDataNoOrient = mixedDataNoOrient[(mixedDataNoOrient["length"] >= 1) & (
             mixedDataNoOrient["width"] >= 1) & (mixedDataNoOrient["height"] >= 1) & (mixedDataNoOrient["volume"] < 15)]
+        mixedDataNoOrient = cleanDensityMistakes(mixedDataNoOrient)
         json.dump(assignIDs(mixedDataNoOrient.drop(columns=["id"]).reset_index(drop=True)).to_json(orient="records"),
                   f, indent=2, ensure_ascii=False)
     with open(mixedPath + 'data-orientationConstraints-noDst.json', 'w+') as f:
@@ -169,6 +174,7 @@ def mixedDataAdaptation():
         # Drop ridiculous dimensions items
         mixedDataOrient = mixedDataOrient[(mixedDataOrient["length"] >= 1) & (
             mixedDataOrient["width"] >= 1) & (mixedDataOrient["height"] >= 1) & (mixedDataOrient["volume"] < 15)]
+        mixedDataOrient = cleanDensityMistakes(mixedDataOrient)
         json.dump(assignIDs(mixedDataOrient.drop(columns=["id"]).reset_index(drop=True)).to_json(orient="records"),
                   f, indent=2, ensure_ascii=False)
 
