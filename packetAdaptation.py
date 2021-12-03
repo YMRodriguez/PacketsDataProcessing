@@ -16,7 +16,7 @@ def assignFragility(data, fragileWords, where="description"):
 
 def volumeProcessor(data):
     data["volume"] = data.apply(
-        lambda x: round((x["length"]*x["width"]*x["height"])/100000, 5), axis=1)
+        lambda x: round((x["length"]*x["width"]*x["height"])/1000000, 5), axis=1)
     return data
 
 
@@ -161,10 +161,10 @@ def mixedDataAdaptation():
         mixedDataNoOrient["weight"] = mixedDataNoOrient.apply(
             lambda x: round(x["weight"], 3), 1)
         # Drop ridiculous dimensions items
-        mixedDataNoOrient = mixedDataNoOrient[(mixedDataNoOrient["length"] >= 1) & (
-            mixedDataNoOrient["width"] >= 1) & (mixedDataNoOrient["height"] >= 1) & (mixedDataNoOrient["volume"] < 15)]
+        mixedDataNoOrient = mixedDataNoOrient[(mixedDataNoOrient["length"] >= 10) & (
+            mixedDataNoOrient["width"] >= 10) & (mixedDataNoOrient["height"] >= 10) & (mixedDataNoOrient["volume"] < 15)]
         mixedDataNoOrient = cleanDensityMistakes(mixedDataNoOrient)
-        json.dump(assignIDs(mixedDataNoOrient.drop(columns=["id"]).reset_index(drop=True)).to_json(orient="records"),
+        json.dump(assignIDs(mixedDataNoOrient.drop(columns=["id"]).reset_index(drop=True)).to_dict(orient="records"),
                   f, indent=2, ensure_ascii=False)
     with open(mixedPath + 'data-orientationConstraints-noDst.json', 'w+') as f:
         mixedDataOrient = pd.concat([pd.read_json(
@@ -172,18 +172,19 @@ def mixedDataAdaptation():
         mixedDataOrient["weight"] = mixedDataOrient.apply(
             lambda x: round(x["weight"], 3), 1)
         # Drop ridiculous dimensions items
-        mixedDataOrient = mixedDataOrient[(mixedDataOrient["length"] >= 1) & (
-            mixedDataOrient["width"] >= 1) & (mixedDataOrient["height"] >= 1) & (mixedDataOrient["volume"] < 15)]
+        mixedDataOrient = mixedDataOrient[(mixedDataOrient["length"] >= 10) & (
+            mixedDataOrient["width"] >= 10) & (mixedDataOrient["height"] >= 10) & (mixedDataOrient["volume"] < 15)]
         mixedDataOrient = cleanDensityMistakes(mixedDataOrient)
-        json.dump(assignIDs(mixedDataOrient.drop(columns=["id"]).reset_index(drop=True)).to_json(orient="records"),
+        json.dump(assignIDs(mixedDataOrient.drop(columns=["id"]).reset_index(drop=True)).to_dict(orient="records"),
                   f, indent=2, ensure_ascii=False)
 
 
 # -------------- Scenarios dataset ------------
+mixedDataAdaptation()
 dataPath = mixedPath + 'data-orientationConstraints-noDst.json'
 with open(dataPath, 'r') as f:
     data = json.load(f)
-data = pd.read_json(data)
+data = pd.DataFrame(data)
 
 pathlib.Path(os.path.dirname(__file__) + os.path.sep +
              'scenarios').mkdir(parents=True, exist_ok=True)
@@ -203,5 +204,5 @@ filename = datetime.now().strftime('%d%H%M%S') + '-' + str(nPackets) + '-' + str
     '-' + str(ADRcount) + '-' + str(priorityCount) + \
     '-' + str(fragilityCount) + '.json'
 with open(scenariosPath + os.path.sep + filename, 'w+') as f:
-    json.dump(partition.drop(columns=["f_or", "dimensionUnique"]).to_json(orient="records"),
+    json.dump(partition.drop(columns=["f_or", "dimensionUnique"]).to_dict(orient="records"),
               f, indent=2, ensure_ascii=False)
