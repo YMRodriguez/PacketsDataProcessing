@@ -12,7 +12,7 @@ def assignIDs(data):
     return data
 
 
-def generator(data, nDestinations, adrDist=None, priorityDist=None, fragility=True):
+def generator(data, nDestinations, adrDist=None, priorityDist=None, fragility=True, minVol=0.001):
     """
     Create dataset with desired conditions.
 
@@ -36,6 +36,7 @@ def generator(data, nDestinations, adrDist=None, priorityDist=None, fragility=Tr
         lambda x: random.choices([0, 1], priorityDist)[0])
     data["ADR"] = data.groupby("subgroupId")["id"].transform(
         lambda x: random.choices([0, 1], adrDist)[0])
+    data = data[data["volume"] >= minVol]
     # Fragility should not be modified, but for the relaxation scenario we can modify it.
     if not fragility:
         data["fragility"].values[:] = 0
@@ -74,7 +75,8 @@ def getRelevantStats(data):
     fragilityCount = data[data["fragility"] == 1].shape[0]
     nPackets = data.shape[0]
     nOrders = data.groupby(["subgroupId"]).ngroups
-    return nPackets, nOrders, destinations, uniqueDim, ADRcount, priorityCount, fragilityCount
+    minVol = data["volume"].min()
+    return nPackets, nOrders, destinations, uniqueDim, ADRcount, priorityCount, fragilityCount, minVol
 
 
 def dataFeasibleOrientationsTupleSerializer(data):

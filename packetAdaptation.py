@@ -180,7 +180,6 @@ def mixedDataAdaptation():
 
 
 # -------------- Scenarios dataset ------------
-mixedDataAdaptation()
 dataPath = mixedPath + 'data-orientationConstraints-noDst.json'
 with open(dataPath, 'r') as f:
     data = json.load(f)
@@ -192,17 +191,17 @@ scenariosPath = os.path.dirname(
     __file__) + os.path.sep + 'scenarios' + os.path.sep
 
 newData = generator(data, 5, adrDist=[1, 0], priorityDist=[
-                    0.5, 0.5], fragility=True)
+                    0.7, 0.3], fragility=True)
 
 # volRatio is specially interesting to know how many packets volume/combinations has the experiment.
 # It is obvious that with a large ratio the algoritm may achieve better results because it allows to have more combinations
 # However, in real examples this may not be true, that's the importance of this parameter.
 partition, volRatio = getPartition(newData, volume=81.6, do=True)
-nPackets, nOrders, destinations, uniqueDim, ADRcount, priorityCount, fragilityCount = getRelevantStats(
+nPackets, nOrders, destinations, uniqueDim, ADRcount, priorityCount, fragilityCount, minVol = getRelevantStats(
     partition)
 filename = datetime.now().strftime('%d%H%M%S') + '-' + str(nPackets) + '-' + str(nOrders) + '-' + str(uniqueDim) + '-' + str(volRatio) + '-' + str(destinations) + \
     '-' + str(ADRcount) + '-' + str(priorityCount) + \
-    '-' + str(fragilityCount) + '.json'
+    '-' + str(fragilityCount) + '-' + str(round(minVol, 5)) + '.json'
 with open(scenariosPath + os.path.sep + filename, 'w+') as f:
     json.dump(partition.drop(columns=["f_or", "dimensionUnique"]).to_dict(orient="records"),
               f, indent=2, ensure_ascii=False)
