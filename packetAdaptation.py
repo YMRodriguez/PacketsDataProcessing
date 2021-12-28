@@ -211,6 +211,7 @@ def datasetDescription(dataset, ID):
             "n_dst": dataset.dstCode.unique().shape[0],
             "n_prio": dataset[dataset["priority"] == 1].shape[0],
             "n_frag": dataset[dataset["fragility"] == 1].shape[0],
+            "n_adr": dataset[dataset["ADR"] == 1].shape[0]
             }
 
 
