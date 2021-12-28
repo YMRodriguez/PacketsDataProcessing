@@ -12,7 +12,7 @@ def assignIDs(data):
     return data
 
 
-def generator(data, nDestinations, adrDist=None, priorityDist=None, fragility=True, minVol=0.001):
+def generator(data, nDestinations, adrDist=None, priorityDist=None, fragility=True, minVol=0.001, minWeight=0.1):
     """
     Create dataset with desired conditions.
 
@@ -36,26 +36,38 @@ def generator(data, nDestinations, adrDist=None, priorityDist=None, fragility=Tr
         lambda x: random.choices([0, 1], priorityDist)[0])
     data["ADR"] = data.groupby("subgroupId")["id"].transform(
         lambda x: random.choices([0, 1], adrDist)[0])
-    data = data[data["volume"] >= minVol]
+    data = data[(data["volume"] >= minVol) & (data["weight"] >= minWeight)]
     # Fragility should not be modified, but for the relaxation scenario we can modify it.
     if not fragility:
         data["fragility"].values[:] = 0
     return data
 
 
-def getPartition(data, volume, volumeOffset=1.5, do=True):
+def getPartition(data, volume, volumeOffset=1.2, do=True):
+    """
+    Gets a partition of the passed data with given conditions.
+
+    Args:
+        data ([type]): dataset.
+        volume ([type]): volume of the container.
+        volumeOffset (float, optional): Offset to improve approximation on volume. Defaults to 1.8.
+        do (bool, optional): If we actually want to do the partition. Defaults to True.
+
+    Returns:
+        [type]: [description]
+    """
     if do:
         subgroupAndTotalVolumeDf = data.groupby(
             "subgroupId")["volume"].sum().reset_index()
         meanSubgroupsEstimation = round(
             (volume*volumeOffset)/subgroupAndTotalVolumeDf["volume"].mean())
-        # Mind this could be less than 1, we left this case to check if the algorithm would work good in these relaxed scenarios.
+        # Mind this estimation could be less than 1, we left this case to check if the algorithm would work good in these relaxed scenarios.
         randomSubgroupsIds = subgroupAndTotalVolumeDf["subgroupId"].sample(
             n=meanSubgroupsEstimation)
         partition = data[data["subgroupId"].isin(randomSubgroupsIds)]
-        return assignIDs(partition.drop(columns=["id"]).reset_index(drop=True)), round(partition["volume"].sum()/(volume*volumeOffset), 1)
+        return assignIDs(partition.drop(columns=["id"]).reset_index(drop=True)), round(partition["volume"].sum()/volume, 2)
     else:
-        return data, round(data["volume"].sum()/(volume*volumeOffset), 1)
+        return data, round(data["volume"].sum()/volume, 2)
 
 
 def getRelevantStats(data):
@@ -67,6 +79,8 @@ def getRelevantStats(data):
     """
     data = dataFeasibleOrientationsTupleSerializer(data)
     destinations = data["dstCode"].nunique()
+    # Consider unique dimension if ordered by value in descending order (dim1, dim2, dim3)
+    # being dim any of [width, height, length].
     data["dimensionUnique"] = data.apply(lambda x: tuple(
         sorted([x["width"], x["height"], x["length"]], reverse=True)), 1)
     uniqueDim = data.groupby(["dimensionUnique"]).ngroups

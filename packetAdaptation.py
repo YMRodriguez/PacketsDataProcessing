@@ -162,7 +162,7 @@ def mixedDataAdaptation():
             lambda x: round(x["weight"], 3), 1)
         # Drop ridiculous dimensions items
         mixedDataNoOrient = mixedDataNoOrient[(mixedDataNoOrient["length"] >= 10) & (
-            mixedDataNoOrient["width"] >= 10) & (mixedDataNoOrient["height"] >= 10) & (mixedDataNoOrient["volume"] < 15)]
+            mixedDataNoOrient["width"] >= 10) & (mixedDataNoOrient["height"] >= 10) & (mixedDataNoOrient["volume"] < 15) & (mixedDataNoOrient["weight"] > 0.01)]
         mixedDataNoOrient = cleanDensityMistakes(mixedDataNoOrient)
         json.dump(assignIDs(mixedDataNoOrient.drop(columns=["id"]).reset_index(drop=True)).to_dict(orient="records"),
                   f, indent=2, ensure_ascii=False)
@@ -173,35 +173,84 @@ def mixedDataAdaptation():
             lambda x: round(x["weight"], 3), 1)
         # Drop ridiculous dimensions items
         mixedDataOrient = mixedDataOrient[(mixedDataOrient["length"] >= 10) & (
-            mixedDataOrient["width"] >= 10) & (mixedDataOrient["height"] >= 10) & (mixedDataOrient["volume"] < 15)]
+            mixedDataOrient["width"] >= 10) & (mixedDataOrient["height"] >= 10) & (mixedDataOrient["volume"] < 15) & (mixedDataOrient["weight"] > 0.01)]
         mixedDataOrient = cleanDensityMistakes(mixedDataOrient)
         json.dump(assignIDs(mixedDataOrient.drop(columns=["id"]).reset_index(drop=True)).to_dict(orient="records"),
                   f, indent=2, ensure_ascii=False)
 
 
 # -------------- Scenarios dataset ------------
-dataPath = mixedPath + 'data-orientationConstraints-noDst.json'
-with open(dataPath, 'r') as f:
-    data = json.load(f)
-data = pd.DataFrame(data)
-
 pathlib.Path(os.path.dirname(__file__) + os.path.sep +
              'scenarios').mkdir(parents=True, exist_ok=True)
-scenariosPath = os.path.dirname(
-    __file__) + os.path.sep + 'scenarios' + os.path.sep
 
-newData = generator(data, 5, adrDist=[1, 0], priorityDist=[
-                    0.7, 0.3], fragility=True)
 
-# volRatio is specially interesting to know how many packets volume/combinations has the experiment.
-# It is obvious that with a large ratio the algoritm may achieve better results because it allows to have more combinations
-# However, in real examples this may not be true, that's the importance of this parameter.
-partition, volRatio = getPartition(newData, volume=81.6, do=True)
-nPackets, nOrders, destinations, uniqueDim, ADRcount, priorityCount, fragilityCount, minVol = getRelevantStats(
-    partition)
-filename = datetime.now().strftime('%d%H%M%S') + '-' + str(nPackets) + '-' + str(nOrders) + '-' + str(uniqueDim) + '-' + str(volRatio) + '-' + str(destinations) + \
-    '-' + str(ADRcount) + '-' + str(priorityCount) + \
-    '-' + str(fragilityCount) + '-' + str(round(minVol, 5)) + '.json'
-with open(scenariosPath + os.path.sep + filename, 'w+') as f:
-    json.dump(partition.drop(columns=["f_or", "dimensionUnique"]).to_dict(orient="records"),
-              f, indent=2, ensure_ascii=False)
+def datasetDescription(dataset, ID):
+    """
+    Generates stats on given dataset.
+
+    Args:
+        dataset ([type]): [description]
+        ID ([type]): identification of the dataset (timestamp).
+
+    Returns:
+        [type]: object containing relevant descritive data on the dataset.
+    """
+
+    return {"ID": ID,
+            "packets_product": len(dataset),
+            "orders_subgroups": dataset.groupby(["subgroupId"]).ngroups,
+            "unique_dim": dataset.groupby(["dimensionUnique"]).ngroups,
+            "unique_dim_weight": dataset.groupby(["dimensionUnique", "weight"]).ngroups,
+            "max_dim": dataset[["width", "height", "length"]].max().max(), "min_dim": dataset[["width", "height", "length"]].min().min(),
+            "max_w": dataset.weight.max(), "min_w": dataset.weight.min(),
+            "w_mean": round(dataset.weight.mean(), 2), "w_median": round(dataset.weight.median(), 2),
+            "w_std": round(dataset.weight.std(), 2), "t_weight": round(dataset.weight.sum(), 2),
+            "max_v": dataset.volume.max(), "min_v": dataset.volume.min(),
+            "v_mean": round(dataset.volume.mean(), 2), "v_median": round(dataset.volume.median(), 2),
+            "v_std": round(dataset.volume.std(), 2), "t_vol": round(dataset.volume.sum(), 2),
+            "n_dst": dataset.dstCode.unique().shape[0],
+            "n_prio": dataset[dataset["priority"] == 1].shape[0],
+            "n_frag": dataset[dataset["fragility"] == 1].shape[0],
+            }
+
+
+def scenarioGeneration(nDestinations, volumeOffset=1.2, adrDist=None, priorityDist=None, fragility=True, minVol=0.001, option=0, containerVolume=81.6):
+    mdPath = mixedPath + 'data-orientationConstraints-noDst.json'
+    mmdPath = mmPath + 'data-orientationConstraints-noDst.json'
+    idPath = ikeaPath + 'data-orientationConstraints-noDst.json'
+    paths = [mdPath, mmdPath, idPath]
+    actualPath = paths[option]
+    # Get the data with the specified path.
+    with open(actualPath, 'r') as f:
+        data = json.load(f)
+    referenceData = pd.DataFrame(data)
+    newData = generator(referenceData, nDestinations,
+                        adrDist, priorityDist, fragility, minVol, minWeight=0.1)
+
+    # volRatio is specially interesting to know how many packets volume/combinations has the experiment.
+    # It is obvious that with a large ratio the algoritm may achieve better results because it allows to have more combinations
+    # However, in real examples this may not be true, that's the importance of this parameter.
+    partition, volRatio = getPartition(
+        newData, volume=containerVolume, volumeOffset=volumeOffset, do=True)
+    nPackets, nOrders, destinations, uniqueDim, ADRcount, priorityCount, fragilityCount, minVol = getRelevantStats(
+        partition)
+    filename = datetime.now().strftime('%d%H%M%S') + '-' + str(nPackets) + '-' + str(nOrders) + '-' + str(uniqueDim) + '-' + str(volRatio) + '-' + str(destinations) + \
+        '-' + str(ADRcount) + '-' + str(priorityCount) + \
+        '-' + str(fragilityCount) + '-' + str(round(minVol, 5)) + '-md-'
+    # Dataset directory contains the dataset itself.
+    filenameDataset = filename + '.json'
+    # Description directory contains relevant data of the dataset for its use in tables and graphs.
+    fId = filename.split("-")[0]
+    filenameDescription = fId + '.json'
+    scenariosPath = os.path.dirname(
+        __file__) + os.path.sep + 'scenarios' + os.path.sep
+    with open(scenariosPath + os.path.sep + 'datasets' + os.path.sep + filenameDataset, 'w+') as f:
+        json.dump(partition.drop(columns=["f_or", "dimensionUnique"]).to_dict(orient="records"),
+                  f, indent=2, ensure_ascii=False)
+    with open(scenariosPath + os.path.sep + 'description' + os.path.sep + filenameDescription, 'w+') as f:
+        description = datasetDescription(partition, fId)
+        json.dump(description, f, indent=2, ensure_ascii=False)
+
+
+scenarioGeneration(nDestinations=1, adrDist=[1, 0], priorityDist=[
+                   1, 0], fragility=True, minVol=0.001, option=0, containerVolume=81.6)
