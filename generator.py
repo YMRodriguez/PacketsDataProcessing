@@ -12,7 +12,7 @@ def assignIDs(data):
     return data
 
 
-def generator(data, nDestinations, adrDist=None, priorityDist=None, fragility=True, minVol=0.001, minWeight=0.1):
+def generator(data, nDestinations, adrDist=None, priorityDist=None, fragility=True, minVol=0.001, minWeight=0.1, minDim=5):
     """
     Create dataset with desired conditions.
 
@@ -37,34 +37,53 @@ def generator(data, nDestinations, adrDist=None, priorityDist=None, fragility=Tr
     data["ADR"] = data.groupby("subgroupId")["id"].transform(
         lambda x: random.choices([0, 1], adrDist)[0])
     data = data[(data["volume"] >= minVol) & (data["weight"] >= minWeight)]
+    data = data[(data["width"] >= minDim) & (
+        data["height"] >= minDim) & (data["length"] >= minDim)]
     # Fragility should not be modified, but for the relaxation scenario we can modify it.
     if not fragility:
         data["fragility"].values[:] = 0
     return data
 
 
-def getPartition(data, volume, volumeOffset=1.2, do=True):
+def getPartition(data, subgroupingDist, volume, volumeOffset=1.2, do=True):
     """
     Gets a partition of the passed data with given conditions.
 
     Args:
         data ([type]): dataset.
+        subgroupingDist ([type]): percentages of [only item subgroup, multiple items in subgroup]
         volume ([type]): volume of the container.
-        volumeOffset (float, optional): Offset to improve approximation on volume. Defaults to 1.8.
+        volumeOffset (float, optional): Offset to improve approximation on volume. Defaults to 1,2.
         do (bool, optional): If we actually want to do the partition. Defaults to True.
 
     Returns:
         [type]: [description]
     """
     if do:
+        # Indicates whether it is a only item subgroup (true) or a multiple items subgroup (false).
+        data["subg"] = data.apply(
+            lambda x: x.subgroupId == x.productId, axis=1)
         subgroupAndTotalVolumeDf = data.groupby(
-            "subgroupId")["volume"].sum().reset_index()
+            ["subgroupId", "subg"])["volume"].sum().reset_index()
+        # Get the ponderated volume means considering distribution.
+        onlyItemsVolMean = subgroupAndTotalVolumeDf[subgroupAndTotalVolumeDf["subg"]]["volume"].mean(
+        ) * subgroupingDist[0]
+        multItemsVolMean = subgroupAndTotalVolumeDf[subgroupAndTotalVolumeDf["subg"]]["volume"].mean(
+        ) * subgroupingDist[1]
         meanSubgroupsEstimation = round(
-            (volume*volumeOffset)/subgroupAndTotalVolumeDf["volume"].mean())
-        # Mind this estimation could be less than 1, we left this case to check if the algorithm would work good in these relaxed scenarios.
-        randomSubgroupsIds = subgroupAndTotalVolumeDf["subgroupId"].sample(
-            n=meanSubgroupsEstimation)
-        partition = data[data["subgroupId"].isin(randomSubgroupsIds)]
+            (volume*volumeOffset)/(onlyItemsVolMean+multItemsVolMean))
+        # Estimation of the distribution for only-item subgroups and item with several items.
+        onlyItemSubgroupEstimation = round(
+            subgroupingDist[0] * meanSubgroupsEstimation)
+        multItemSubgroupEstimation = round(
+            subgroupingDist[1] * meanSubgroupsEstimation)
+        # Get the subgroups ids.
+        onlyItemsSubgroupsId = subgroupAndTotalVolumeDf[subgroupAndTotalVolumeDf["subg"]]["subgroupId"].sample(
+            n=onlyItemSubgroupEstimation)
+        multItemSubgroupsId = subgroupAndTotalVolumeDf[~subgroupAndTotalVolumeDf["subg"]]["subgroupId"].sample(
+            n=multItemSubgroupEstimation)
+        partition = data[data["subgroupId"].isin(
+            pd.concat([onlyItemsSubgroupsId, multItemSubgroupsId]))]
         return assignIDs(partition.drop(columns=["id"]).reset_index(drop=True)), round(partition["volume"].sum()/volume, 2)
     else:
         return data, round(data["volume"].sum()/volume, 2)
