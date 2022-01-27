@@ -126,7 +126,10 @@ def mediamarktAdaptation():
         lambda x: determineCurrentOrientation(x), 1)
     mmData.loc[(mmData["description"].str.contains("TV") | mmData["description"].str.contains("Monitores")) & ~(mmData["description"].str.contains(
         "Series") | mmData["description"].str.contains("Antena")) & ((mmData["or"] == 1) | (mmData["or"] == 2)), "or"] = 3
-    mmData = mmData[mmData["description"] != "Juguetes sexuales"]
+    mmData = cleanDensityMistakes(
+        mmData[mmData["description"] != "Juguetes sexuales"])
+    mmData = mmData[(mmData["weight"] >= 0.01) & (mmData["volume"] < 15) & (
+        mmData["volume"] > 0.000125)]
     with open(mmPath + os.path.sep + 'mm-orientationConstraints-noDst.json', 'w+') as f:
         def checkSpecial(description):
             special = any(list(map(lambda x: x in description, ["TV", "Monitores"]))) and all(
@@ -134,12 +137,12 @@ def mediamarktAdaptation():
             return special
         mmData["f_or"] = mmData.apply(
             lambda x: createRandomFeasibleOrientations(x, special=checkSpecial(x["description"])), 1)
-        json.dump(mmData.to_dict(orient="records"),
+        json.dump(assignIDs(mmData.reset_index(drop=True)).to_dict(orient="records"),
                   f, indent=2, ensure_ascii=False)
     with open(mmPath + os.path.sep + 'mm-noOrientationConstraints-noDst.json', 'w+') as f:
         mmData["f_or"] = mmData.apply(
             lambda x: createRandomFeasibleOrientations(x, constrained=False), 1)
-        json.dump(mmData.to_dict(orient="records"),
+        json.dump(assignIDs(mmData.reset_index(drop=True)).to_dict(orient="records"),
                   f, indent=2, ensure_ascii=False)
 
 
@@ -150,19 +153,21 @@ mixedPath = os.path.dirname(__file__) + os.path.sep + \
     'mixedData' + os.path.sep
 
 
+def cleanDensityMistakes(data):
+    data["density"] = data[data["volume"] > 0].apply(
+        lambda x: x["weight"]/x["volume"], 1)
+    return data[(data["density"] >= 100) & (data["weight"] < 300)].drop(columns=["density"]).reset_index(drop=True)
+
+
 def mixedDataAdaptation():
-    def cleanDensityMistakes(data):
-        data["density"] = data["weight"]/data["volume"]
-        data = data[data["density"] < 100].drop(columns=["density"])
-        return data
     with open(mixedPath + 'data-noOrientationConstraints-noDst.json', 'w+') as f:
         mixedDataNoOrient = pd.concat([pd.read_json(
             mmPath + 'mm-noOrientationConstraints-noDst.json'), pd.read_json(ikeaPath + 'ikea-noOrientationConstraints-noDst.json')])
         mixedDataNoOrient["weight"] = mixedDataNoOrient.apply(
             lambda x: round(x["weight"], 3), 1)
         # Drop ridiculous dimensions items
-        mixedDataNoOrient = mixedDataNoOrient[(mixedDataNoOrient["length"] >= 10) & (
-            mixedDataNoOrient["width"] >= 10) & (mixedDataNoOrient["height"] >= 10) & (mixedDataNoOrient["volume"] < 15) & (mixedDataNoOrient["weight"] > 0.01)]
+        mixedDataNoOrient = mixedDataNoOrient[(mixedDataNoOrient["volume"] >= 0.001) & (
+            mixedDataNoOrient["volume"] < 10) & (mixedDataNoOrient["weight"] > 0.05)]
         mixedDataNoOrient = cleanDensityMistakes(mixedDataNoOrient)
         json.dump(assignIDs(mixedDataNoOrient.drop(columns=["id"]).reset_index(drop=True)).to_dict(orient="records"),
                   f, indent=2, ensure_ascii=False)
@@ -172,8 +177,8 @@ def mixedDataAdaptation():
         mixedDataOrient["weight"] = mixedDataOrient.apply(
             lambda x: round(x["weight"], 3), 1)
         # Drop ridiculous dimensions items
-        mixedDataOrient = mixedDataOrient[(mixedDataOrient["length"] >= 10) & (
-            mixedDataOrient["width"] >= 10) & (mixedDataOrient["height"] >= 10) & (mixedDataOrient["volume"] < 15) & (mixedDataOrient["weight"] > 0.01)]
+        mixedDataOrient = mixedDataOrient[(mixedDataOrient["volume"] >= 0.001) & (mixedDataOrient["volume"] < 10) & (
+            mixedDataOrient["weight"] > 0.01)]
         mixedDataOrient = cleanDensityMistakes(mixedDataOrient)
         json.dump(assignIDs(mixedDataOrient.drop(columns=["id"]).reset_index(drop=True)).to_dict(orient="records"),
                   f, indent=2, ensure_ascii=False)
@@ -211,33 +216,51 @@ def datasetDescription(dataset, ID):
             "n_dst": dataset.dstCode.unique().shape[0],
             "n_prio": dataset[dataset["priority"] == 1].shape[0],
             "n_frag": dataset[dataset["fragility"] == 1].shape[0],
-            "n_adr": dataset[dataset["ADR"] == 1].shape[0]
+            "n_adr": dataset[dataset["ADR"] == 1].shape[0],
+            "n_only_item_sub": dataset[dataset["subgroupId"] == dataset["productId"]].shape[0],
+            "n_mult_item_sub": dataset[dataset["subgroupId"] != dataset["productId"]].shape[0]
             }
 
 
-def scenarioGeneration(nDestinations, volumeOffset=1.2, adrDist=None, priorityDist=None, fragility=True, minVol=0.001, option=0, containerVolume=81.6):
+def adjustVolRatio(volRatioBounds, volRatio, volumeOffset):
+    if volRatio > volRatioBounds[1]:
+        volumeOffset = volRatioBounds[1]/volRatio * volumeOffset
+    elif volRatio < volRatioBounds[0]:
+        volumeOffset = volRatioBounds[0]/volRatio * volumeOffset
+    return volumeOffset
+
+
+def scenarioGeneration(nDestinations, volumeOffset=1.2, volRatioBounds=[1, 1.1], adrDist=None, priorityDist=None, fragility=True, minVol=0.01, option=0, containerVolume=81.6, minDim=10, minWeight=0.1, subgroupsDist=[0.75, 0.25]):
     mdPath = mixedPath + 'data-orientationConstraints-noDst.json'
-    mmdPath = mmPath + 'data-orientationConstraints-noDst.json'
-    idPath = ikeaPath + 'data-orientationConstraints-noDst.json'
+    mmdPath = mmPath + 'mm-orientationConstraints-noDst.json'
+    idPath = ikeaPath + 'ikea-orientationConstraints-noDst.json'
     paths = [mdPath, mmdPath, idPath]
     actualPath = paths[option]
+    options = ['md', 'mmd', 'id']
     # Get the data with the specified path.
     with open(actualPath, 'r') as f:
         data = json.load(f)
     referenceData = pd.DataFrame(data)
     newData = generator(referenceData, nDestinations,
-                        adrDist, priorityDist, fragility, minVol, minWeight=0.1)
+                        adrDist, priorityDist, fragility, minVol=minVol, minWeight=minWeight, minDim=minDim)
 
     # volRatio is specially interesting to know how many packets volume/combinations has the experiment.
     # It is obvious that with a large ratio the algoritm may achieve better results because it allows to have more combinations
     # However, in real examples this may not be true, that's the importance of this parameter.
-    partition, volRatio = getPartition(
-        newData, volume=containerVolume, volumeOffset=volumeOffset, do=True)
+    # Fixed vol ratio number.
+    volRatio = volRatioBounds[1] + 1
+    partition = None
+    while ((volRatioBounds[0] > volRatio) or (volRatio > volRatioBounds[1])):
+        partition, volRatio = getPartition(
+            newData, subgroupsDist, volume=containerVolume, volumeOffset=volumeOffset, do=True)
+        volumeOffset = adjustVolRatio(volRatioBounds, volRatio, volumeOffset)
+
     nPackets, nOrders, destinations, uniqueDim, ADRcount, priorityCount, fragilityCount, minVol = getRelevantStats(
         partition)
     filename = datetime.now().strftime('%d%H%M%S') + '-' + str(nPackets) + '-' + str(nOrders) + '-' + str(uniqueDim) + '-' + str(volRatio) + '-' + str(destinations) + \
         '-' + str(ADRcount) + '-' + str(priorityCount) + \
-        '-' + str(fragilityCount) + '-' + str(round(minVol, 5)) + '-md-'
+        '-' + str(fragilityCount) + '-' + str(round(minVol, 5)) + \
+        '-' + options[option]
     # Dataset directory contains the dataset itself.
     filenameDataset = filename + '.json'
     # Description directory contains relevant data of the dataset for its use in tables and graphs.
@@ -253,5 +276,5 @@ def scenarioGeneration(nDestinations, volumeOffset=1.2, adrDist=None, priorityDi
         json.dump(description, f, indent=2, ensure_ascii=False)
 
 
-scenarioGeneration(nDestinations=1, adrDist=[1, 0], priorityDist=[
-                   1, 0], fragility=True, minVol=0.001, option=0, containerVolume=81.6)
+scenarioGeneration(nDestinations=4, volumeOffset=1.05, volRatioBounds=[1, 1.1], adrDist=[1, 0], priorityDist=[
+                   0.95, 0.05], fragility=True, minVol=0.015, option=2, containerVolume=81.6, minDim=15, minWeight=0.2, subgroupsDist=[0.8, 0.2])
