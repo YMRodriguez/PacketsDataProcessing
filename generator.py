@@ -84,7 +84,7 @@ def getPartition(data, subgroupingDist, volume, volumeOffset=1.2, do=True):
             n=multItemSubgroupEstimation)
         partition = data[data["subgroupId"].isin(
             pd.concat([onlyItemsSubgroupsId, multItemSubgroupsId]))]
-        return assignIDs(partition.drop(columns=["id"]).reset_index(drop=True)), round(partition["volume"].sum()/volume, 2)
+        return assignIDs(partition.drop(columns=["id", "subg"]).reset_index(drop=True)), round(partition["volume"].sum()/volume, 2)
     else:
         return data, round(data["volume"].sum()/volume, 2)
 

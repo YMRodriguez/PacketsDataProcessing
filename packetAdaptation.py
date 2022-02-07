@@ -277,4 +277,4 @@ def scenarioGeneration(nDestinations, volumeOffset=1.2, volRatioBounds=[1, 1.1],
 
 
 scenarioGeneration(nDestinations=4, volumeOffset=1.05, volRatioBounds=[1, 1.1], adrDist=[1, 0], priorityDist=[
-                   0.95, 0.05], fragility=True, minVol=0.015, option=2, containerVolume=81.6, minDim=15, minWeight=0.2, subgroupsDist=[0.8, 0.2])
+                   0.95, 0.05], fragility=True, minVol=0.015, option=2, containerVolume=81.6, minDim=15, minWeight=0.2, subgroupsDist=[0.9, 0.1])
