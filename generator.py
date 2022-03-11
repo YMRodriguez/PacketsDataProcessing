@@ -57,18 +57,20 @@ def getPartition(data, subgroupingDist, volume, volumeOffset=1.2, do=True):
         do (bool, optional): If we actually want to do the partition. Defaults to True.
 
     Returns:
-        [type]: [description]
+        [list]: partition dataset.
+        [float]: volume ratio.
+
     """
     if do:
         # Indicates whether it is a only item subgroup (true) or a multiple items subgroup (false).
-        data["subg"] = data.apply(
+        data["NoSubg"] = data.apply(
             lambda x: x.subgroupId == x.productId, axis=1)
         subgroupAndTotalVolumeDf = data.groupby(
-            ["subgroupId", "subg"])["volume"].sum().reset_index()
+            ["subgroupId", "NoSubg"])["volume"].sum().reset_index()
         # Get the ponderated volume means considering distribution.
-        onlyItemsVolMean = subgroupAndTotalVolumeDf[subgroupAndTotalVolumeDf["subg"]]["volume"].mean(
+        onlyItemsVolMean = subgroupAndTotalVolumeDf[subgroupAndTotalVolumeDf["NoSubg"]]["volume"].mean(
         ) * subgroupingDist[0]
-        multItemsVolMean = subgroupAndTotalVolumeDf[subgroupAndTotalVolumeDf["subg"]]["volume"].mean(
+        multItemsVolMean = subgroupAndTotalVolumeDf[subgroupAndTotalVolumeDf["NoSubg"]]["volume"].mean(
         ) * subgroupingDist[1]
         meanSubgroupsEstimation = round(
             (volume*volumeOffset)/(onlyItemsVolMean+multItemsVolMean))
@@ -78,18 +80,18 @@ def getPartition(data, subgroupingDist, volume, volumeOffset=1.2, do=True):
         multItemSubgroupEstimation = round(
             subgroupingDist[1] * meanSubgroupsEstimation)
         # Get the subgroups ids.
-        onlyItemsSubgroupsId = subgroupAndTotalVolumeDf[subgroupAndTotalVolumeDf["subg"]]["subgroupId"].sample(
+        onlyItemsSubgroupsId = subgroupAndTotalVolumeDf[subgroupAndTotalVolumeDf["NoSubg"]]["subgroupId"].sample(
             n=onlyItemSubgroupEstimation)
-        multItemSubgroupsId = subgroupAndTotalVolumeDf[~subgroupAndTotalVolumeDf["subg"]]["subgroupId"].sample(
+        multItemSubgroupsId = subgroupAndTotalVolumeDf[~subgroupAndTotalVolumeDf["NoSubg"]]["subgroupId"].sample(
             n=multItemSubgroupEstimation)
         partition = data[data["subgroupId"].isin(
             pd.concat([onlyItemsSubgroupsId, multItemSubgroupsId]))]
-        return assignIDs(partition.drop(columns=["id", "subg"]).reset_index(drop=True)), round(partition["volume"].sum()/volume, 2)
+        return assignIDs(partition.drop(columns=["id", "NoSubg"]).reset_index(drop=True)), round(partition["volume"].sum()/volume, 2)
     else:
         return data, round(data["volume"].sum()/volume, 2)
 
 
-def getRelevantStats(data):
+def getStats(data):
     """
     This function gets relevant stats like number of unique dimensions or destinations.
 

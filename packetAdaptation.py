@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import random
 import pathlib
-from generator import generator, getRelevantStats, getPartition, assignIDs
+from generator import generator, getStats, getPartition, assignIDs
 from datetime import datetime
 # -------------- Generic functions --------------------------------
 
@@ -87,6 +87,8 @@ ikeaPath = os.path.dirname(__file__) + os.path.sep + 'ikeaData' + os.path.sep
 
 
 def ikeaAdaptation():
+    """Generates a dataset of preloaded Ikea data.
+    """
     ikeaData = pd.read_json(ikeaPath + 'data.json')
 
     # Give fragility based on description and process the data.
@@ -112,6 +114,8 @@ mmPath = os.path.dirname(__file__) + os.path.sep + \
 
 
 def mediamarktAdaptation():
+    """Generates a dataset of preloaded Mediamarkt data.
+    """
     mmData = pd.read_json(mmPath + 'data.json')
 
     # Bit of cleaning.
@@ -128,7 +132,7 @@ def mediamarktAdaptation():
         "Series") | mmData["description"].str.contains("Antena")) & ((mmData["or"] == 1) | (mmData["or"] == 2)), "or"] = 3
     mmData = cleanDensityMistakes(
         mmData[mmData["description"] != "Juguetes sexuales"])
-    mmData = mmData[(mmData["weight"] >= 0.01) & (mmData["volume"] < 15) & (
+    mmData = mmData[(mmData["weight"] >= 0.001) & (mmData["volume"] < 15) & (
         mmData["volume"] > 0.000125)]
     with open(mmPath + os.path.sep + 'mm-orientationConstraints-noDst.json', 'w+') as f:
         def checkSpecial(description):
@@ -160,6 +164,8 @@ def cleanDensityMistakes(data):
 
 
 def mixedDataAdaptation():
+    """Generates a dataset of data from both MediaMarkt and Ikea preloaded data.
+    """
     with open(mixedPath + 'data-noOrientationConstraints-noDst.json', 'w+') as f:
         mixedDataNoOrient = pd.concat([pd.read_json(
             mmPath + 'mm-noOrientationConstraints-noDst.json'), pd.read_json(ikeaPath + 'ikea-noOrientationConstraints-noDst.json')])
@@ -223,6 +229,16 @@ def datasetDescription(dataset, ID):
 
 
 def adjustVolRatio(volRatioBounds, volRatio, volumeOffset):
+    """Adjust the volume offset based on the volume ratio and desired bounds.
+
+    Args:
+        volRatioBounds (_type_): max and min values for the volume ratio.
+        volRatio (_type_): volume ratio, as (total volume packets)/(total volume container)
+        volumeOffset (_type_): coefficient to adjust the volume ratio.
+
+    Returns:
+        _type_: adjusted volume offset.
+    """
     if volRatio > volRatioBounds[1]:
         volumeOffset = volRatioBounds[1]/volRatio * volumeOffset
     elif volRatio < volRatioBounds[0]:
@@ -230,13 +246,35 @@ def adjustVolRatio(volRatioBounds, volRatio, volumeOffset):
     return volumeOffset
 
 
-def scenarioGeneration(nDestinations, volumeOffset=1.2, volRatioBounds=[1, 1.1], adrDist=None, priorityDist=None, fragility=True, minVol=0.01, option=0, containerVolume=81.6, minDim=10, minWeight=0.1, subgroupsDist=[0.75, 0.25]):
+def scenarioGeneration(nDestinations, volumeOffset=1.2, volRatioBounds=[1, 1.1], adrDist=None, priorityDist=None, fragility=True, minVol=0.01, option=0, containerVolume=81.6, minDim=10, minWeight=0.1, subgroupsDist=[0.85, 0.15]):
+    """Generate new scenario of packets given a set of parameters.
+
+    Args:
+        nDestinations (_type_): number of destinations.
+        volumeOffset (float, optional): Offset to calibrate the volume. Defaults to 1.2.
+        volRatioBounds (list, optional): Ratio bound between the volume of the container and the total dataset volume. Defaults to [1, 1.1].
+        adrDist (_type_, optional): Distribution of dangerous items. Defaults to None.
+        priorityDist (_type_, optional): Distribution of priority items. Defaults to None.
+        fragility (bool, optional): Default fragility activation. Defaults to True.
+        minVol (float, optional): Minimum volume of an item in the scenario. Defaults to 0.01.
+        option (int, optional): Indicator to choose a data set: 0 for mixed, 1 for mediamarkt, 2 for ikea. Defaults to 0.
+        containerVolume (float, optional): Volume of the container. Defaults to 81.6.
+        minDim (int, optional): Minimum dimension. Defaults to 10.
+        minWeight (float, optional): Minimum weight. Defaults to 0.1.
+        subgroupsDist (list, optional): Subgrouping distribution. Defaults to [0.85, 0.15].
+    """
+    # Definition of the paths.
     mdPath = mixedPath + 'data-orientationConstraints-noDst.json'
     mmdPath = mmPath + 'mm-orientationConstraints-noDst.json'
     idPath = ikeaPath + 'ikea-orientationConstraints-noDst.json'
+    if option == 1 and subgroupsDist[1]:
+        print("Error: Mediamarkt dataset has no subgroupsDist")
+        return
+
     paths = [mdPath, mmdPath, idPath]
     actualPath = paths[option]
-    options = ['md', 'mmd', 'id']
+    options = ['m', 'mm', 'i']
+
     # Get the data with the specified path.
     with open(actualPath, 'r') as f:
         data = json.load(f)
@@ -245,17 +283,18 @@ def scenarioGeneration(nDestinations, volumeOffset=1.2, volRatioBounds=[1, 1.1],
                         adrDist, priorityDist, fragility, minVol=minVol, minWeight=minWeight, minDim=minDim)
 
     # volRatio is specially interesting to know how many packets volume/combinations has the experiment.
-    # It is obvious that with a large ratio the algoritm may achieve better results because it allows to have more combinations
+    # It is obvious that with a large ratio the algoritm may achieve better results because it allows to have more combinations.
     # However, in real examples this may not be true, that's the importance of this parameter.
-    # Fixed vol ratio number.
+    # Fixed vol ratio number not within the bounds.
     volRatio = volRatioBounds[1] + 1
     partition = None
-    while ((volRatioBounds[0] > volRatio) or (volRatio > volRatioBounds[1])):
+    # Iterate until getting a partition whose volRatio is acceptable.
+    while not (volRatioBounds[0] <= volRatio <= volRatioBounds[1]):
         partition, volRatio = getPartition(
             newData, subgroupsDist, volume=containerVolume, volumeOffset=volumeOffset, do=True)
         volumeOffset = adjustVolRatio(volRatioBounds, volRatio, volumeOffset)
 
-    nPackets, nOrders, destinations, uniqueDim, ADRcount, priorityCount, fragilityCount, minVol = getRelevantStats(
+    nPackets, nOrders, destinations, uniqueDim, ADRcount, priorityCount, fragilityCount, minVol = getStats(
         partition)
     filename = datetime.now().strftime('%d%H%M%S') + '-' + str(nPackets) + '-' + str(nOrders) + '-' + str(uniqueDim) + '-' + str(volRatio) + '-' + str(destinations) + \
         '-' + str(ADRcount) + '-' + str(priorityCount) + \
@@ -276,5 +315,5 @@ def scenarioGeneration(nDestinations, volumeOffset=1.2, volRatioBounds=[1, 1.1],
         json.dump(description, f, indent=2, ensure_ascii=False)
 
 
-scenarioGeneration(nDestinations=4, volumeOffset=1.05, volRatioBounds=[1, 1.1], adrDist=[1, 0], priorityDist=[
-                   0.95, 0.05], fragility=True, minVol=0.015, option=2, containerVolume=81.6, minDim=15, minWeight=0.2, subgroupsDist=[0.9, 0.1])
+scenarioGeneration(nDestinations=1, volumeOffset=1.05, volRatioBounds=[1, 1.1], adrDist=[1, 0], priorityDist=[
+                   0.9, 0.1], fragility=True, minVol=0.035, option=0, containerVolume=81.6, minDim=10, minWeight=0.2, subgroupsDist=[0.95, 0.05])
