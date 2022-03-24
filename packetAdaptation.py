@@ -224,7 +224,9 @@ def datasetDescription(dataset, ID):
             "n_frag": dataset[dataset["fragility"] == 1].shape[0],
             "n_adr": dataset[dataset["ADR"] == 1].shape[0],
             "n_only_item_sub": dataset[dataset["subgroupId"] == dataset["productId"]].shape[0],
-            "n_mult_item_sub": dataset[dataset["subgroupId"] != dataset["productId"]].shape[0]
+            "n_mult_item_sub": dataset[dataset["subgroupId"] != dataset["productId"]].shape[0],
+            "perc_mult": round(dataset[dataset["subgroupId"] != dataset["productId"]].shape[0]/len(dataset), 2),
+            "perc_unique": round(dataset.groupby(["dimensionUnique"]).ngroups/len(dataset), 2),
             }
 
 
@@ -315,5 +317,5 @@ def scenarioGeneration(nDestinations, volumeOffset=1.2, volRatioBounds=[1, 1.1],
         json.dump(description, f, indent=2, ensure_ascii=False)
 
 
-scenarioGeneration(nDestinations=1, volumeOffset=1.05, volRatioBounds=[1, 1.1], adrDist=[1, 0], priorityDist=[
-                   0.9, 0.1], fragility=True, minVol=0.035, option=0, containerVolume=81.6, minDim=10, minWeight=0.2, subgroupsDist=[0.95, 0.05])
+scenarioGeneration(nDestinations=2, volumeOffset=1.15, volRatioBounds=[1, 1.2], adrDist=[1, 0], priorityDist=[
+                   0.9, 0.12], fragility=True, minVol=0.025, option=1, containerVolume=81.6, minDim=20, minWeight=0.2, subgroupsDist=[1.00, 0.00])
