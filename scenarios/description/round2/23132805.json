@@ -23,5 +23,8 @@
   "n_frag": 74,
   "n_adr": 0,
   "n_only_item_sub": 625,
-  "n_mult_item_sub": 29
+  "n_mult_item_sub": 29,
+  "perc_mult": 0.04,
+  "perc_prio": 0.13,
+  "perc_unique": 0.81
 }

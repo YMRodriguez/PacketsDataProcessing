@@ -25,5 +25,6 @@
   "n_only_item_sub": 436,
   "n_mult_item_sub": 25,
   "perc_mult": 0.05,
-  "perc_unique": 0.7
+  "perc_unique": 0.7,
+  "perc_prio": 0.04
 }
