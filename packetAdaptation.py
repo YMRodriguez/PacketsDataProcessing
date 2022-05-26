@@ -227,6 +227,7 @@ def datasetDescription(dataset, ID):
             "n_mult_item_sub": dataset[dataset["subgroupId"] != dataset["productId"]].shape[0],
             "perc_mult": round(dataset[dataset["subgroupId"] != dataset["productId"]].shape[0]/len(dataset), 2),
             "perc_unique": round(dataset.groupby(["dimensionUnique"]).ngroups/len(dataset), 2),
+            "perc_prio": round(dataset[dataset["priority"] == 1].shape[0]/len(dataset), 2),
             }
 
 
@@ -317,16 +318,5 @@ def scenarioGeneration(nDestinations, volumeOffset=1.2, volRatioBounds=[1, 1.1],
         json.dump(description, f, indent=2, ensure_ascii=False)
 
 
-# scenarioGeneration(nDestinations=2, volumeOffset=1.15, volRatioBounds=[1, 1.2], adrDist=[1, 0], priorityDist=[
-#                   0.9, 0.12], fragility=True, minVol=0.025, option=1, containerVolume=81.6, minDim=20, minWeight=0.2, subgroupsDist=[1.00, 0.00])
-
-
-mdPath = mixedPath + 'data-orientationConstraints-noDst.json'
-
-with open(mdPath, 'r') as f:
-    data = pd.DataFrame(json.load(f))
-    data["dimensionUnique"] = data.apply(lambda x: tuple(
-        sorted([x["width"], x["height"], x["length"]], reverse=True)), 1)
-    uniqueDim = data.groupby(["dimensionUnique"]).ngroups
-    # Print the number of unique identifiers in the dataset.
-    print(uniqueDim)
+scenarioGeneration(nDestinations=4, volumeOffset=1.13, volRatioBounds=[1, 1.13], adrDist=[1, 0], priorityDist=[
+                   0.94, 0.06], fragility=True, minVol=0.03, option=0, containerVolume=81.6, minDim=25, minWeight=0.3, subgroupsDist=[0.97, 0.03])
